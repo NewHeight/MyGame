@@ -182,6 +182,24 @@ fn particle_explosion() -> particles::EmitterConfig {
     }
 }
 
+const FRAGMENT_SHADER: &str = include_str!("starfield-shader.glsl");
+
+const VERTEX_SHADER: &str = "#version 100
+attribute vec3 position;
+attribute vec2 textcoord;
+attribute vec4 color0;
+varying float iTime;
+
+uniform mat4 Model;
+uniform mat4 Projection;
+uniform vec4 _Time;
+
+void main() {
+    gl_Position = Projection * Model * vec4(position, 1);
+    iTime = _Time.x;
+}
+";
+
 #[macroquad::main("My game")]
 async fn main() -> Result<(), macroquad::Error> {
     rand::srand(miniquad::date::now() as u64);
@@ -196,6 +214,23 @@ async fn main() -> Result<(), macroquad::Error> {
         collided: false,
     };
 
+    let mut direction_modifier: f32 = 0.0;
+    let render_target = render_target(320, 150);
+    render_target.texture.set_filter(FilterMode::Nearest);
+    let material = load_material(
+        ShaderSource::Glsl {
+            vertex: VERTEX_SHADER,
+            fragment: FRAGMENT_SHADER,
+        },
+        MaterialParams {
+            uniforms: vec![
+                UniformDesc::new("iResolution", UniformType::Float2),
+                UniformDesc::new("direction_modifier", UniformType::Float1),
+            ],
+            ..Default::default()
+        },
+    )
+    .unwrap();
     //let mut x = screen_width() / 2.0;
     //let mut y = screen_height() / 2.0;
     //let mut rotation_angle = 0.0;
@@ -387,6 +422,22 @@ async fn main() -> Result<(), macroquad::Error> {
     loop {
         clear_background(DARKPURPLE);
 
+        material.set_uniform("iResolution", (screen_width(), screen_height()));
+        material.set_uniform("direction_modifier", direction_modifier);
+        gl_use_material(&material);
+        draw_texture_ex(
+            &render_target.texture,
+            0.0,
+            0.,
+            WHITE,
+            DrawTextureParams {
+                dest_size: Some(vec2(screen_width(), screen_height())),
+                ..Default::default()
+            },
+        );
+
+        gl_use_default_material();
+
         match game_state {
             GameState::MainMenu => {
                 let w = screen_width();
@@ -473,10 +524,12 @@ async fn main() -> Result<(), macroquad::Error> {
                 ship_sprite.set_animation(0);
                 if is_key_down(KeyCode::Right) {
                     circle.x += MOVEMENT_SPEED * delta_time;
+                    direction_modifier += 0.05 * delta_time;
                     ship_sprite.set_animation(1);
                 }
                 if is_key_down(KeyCode::Left) {
                     circle.x -= MOVEMENT_SPEED * delta_time;
+                    direction_modifier -= 0.05 * delta_time;
                     ship_sprite.set_animation(2);
                 }
                 if is_key_down(KeyCode::Down) {
